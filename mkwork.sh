@@ -398,14 +398,14 @@ mkwork__cmd_install() {
     mkwork__require_deps || return 1
     latest_tag=$(mkwork__get_latest_tag "$MKWORK_REPO")
     if [ -z "$latest_tag" ]; then
-      printf 'mkwork: failed to fetch latest release info\\n' >&2
+      printf 'mkwork: failed to fetch latest release info\n' >&2
       return 1
     fi
     tmpdir=$(mkwork__path_home_expand "${TMPDIR:-/tmp}")
     workdir="$tmpdir/mkwork.$$"
     mkdir -p "$workdir" || return 1
     if ! mkwork__download_release "$MKWORK_REPO" "$latest_tag" "$workdir"; then
-      printf 'mkwork: download or sha256 verification failed\\n' >&2
+      printf 'mkwork: download or sha256 verification failed\n' >&2
       rm -rf "$workdir"
       return 1
     fi
