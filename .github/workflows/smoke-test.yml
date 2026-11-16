@@ -57,6 +57,23 @@ jobs:
             [ ! -f "$HOME/.local/state/mkwork/state.json" ]
           '
 
+      - name: Preserve caller variables
+        run: |
+          set -eu
+          tmp_dir="$(mktemp -d)"
+          export HOME="$tmp_dir/home"
+          mkdir -p "$HOME/.config/mkwork"
+          printf 'update_check=0\n' > "$HOME/.config/mkwork/config"
+          name=caller_name dir=caller_dir cfg=caller_cfg repo=caller_repo
+          unset key line target repo_override
+          . ./mkwork.sh
+          mkwork --doctor >/dev/null
+          mkwork --install --repo invalid >/dev/null 2>&1 || :
+          mkwork example
+          test "$PWD" = "$HOME/work/$(date +%Y%m%d)_example"
+          test "$name:$dir:$cfg:$repo" = caller_name:caller_dir:caller_cfg:caller_repo
+          test "${key+x}${line+x}${target+x}${repo_override+x}" = ""
+
       - name: Smoke test (error cases)
         run: |
           set -eu
