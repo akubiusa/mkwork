@@ -598,9 +598,9 @@ mkwork__select_with_number() {
   printf '%s\n' "$selected_dir"
 }
 
-# mkwork__cmd_select: select an existing work directory and cd into it.
+# mkwork__cmd_select: select an existing work directory.
 # Exit status: 0 = success, 1 = error or cancelled
-mkwork__cmd_select() {
+mkwork__cmd_select() (
   mkwork__load_config
 
   if [ ! -t 0 ]; then
@@ -620,10 +620,27 @@ mkwork__cmd_select() {
     return 1
   fi
 
-  cd -- "$selected_dir" || return 1
+  printf '%s' "$selected_dir"
+)
 
-  mkwork__maybe_check_update >/dev/null 2>&1 || true
-}
+mkwork__create_dir() (
+  for arg in "$@"; do
+    case "$arg" in
+      -*)
+        printf 'mkwork: unknown option: %s\n' "$arg" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  name="$*"
+  mkwork__load_config
+  date_part=$(date +%Y%m%d)
+  dir_name="${date_part}_$name"
+  target="$MKWORK_WORK_ROOT/$dir_name"
+  mkdir -p "$target" || return 1
+  printf '%s' "$target"
+)
 
 # mkwork: main entry for create/update/install commands.
 mkwork() {
@@ -641,27 +658,36 @@ mkwork() {
         printf 'mkwork: unexpected argument: %s\n' "$1" >&2
         return 1
       fi
-      mkwork__cmd_select
-      return $?
+      set -- "$(mkwork__cmd_select && printf '.')"
+      case "$1" in *.) set -- "${1%.}" ;; *) return 1 ;; esac
+      [ -n "$1" ] || return 1
+      cd -- "$1" || return 1
+      (mkwork__maybe_check_update >/dev/null 2>&1) || true
+      return 0
       ;;
     --install)
       shift
-      mkwork__cmd_install "$@"
+      (mkwork__cmd_install "$@")
       return $?
       ;;
     --update)
       shift
-      mkwork__cmd_update "$@"
-      return $?
+      (mkwork__cmd_update "$@") || return $?
+      set -- "$(mkwork__install_paths; printf '%s' "$MKWORK_INSTALL_PATH")"
+      if [ -f "$1" ]; then
+        # shellcheck source=/dev/null
+        . "$1"
+      fi
+      return 0
       ;;
     --uninstall)
       shift
-      mkwork__cmd_uninstall "$@"
+      (mkwork__cmd_uninstall "$@")
       return $?
       ;;
     --doctor)
       shift
-      mkwork__cmd_doctor "$@"
+      (mkwork__cmd_doctor "$@")
       return $?
       ;;
     --version|-v|version)
@@ -688,28 +714,13 @@ mkwork() {
       ;;
   esac
 
-  for arg in "$@"; do
-    case "$arg" in
-      -*)
-        printf 'mkwork: unknown option: %s\n' "$arg" >&2
-        return 1
-        ;;
-    esac
-  done
-
-  name="$*"
-  if [ -z "$name" ]; then
+  if [ -z "$*" ]; then
     mkwork__usage
     return 1
   fi
-
-  mkwork__load_config
-  date_part=$(date +%Y%m%d)
-  dir_name="${date_part}_$name"
-  target="$MKWORK_WORK_ROOT/$dir_name"
-
-  mkdir -p "$target" || return 1
-  cd "$target" || return 1
-
-  mkwork__maybe_check_update >/dev/null 2>&1 || true
+  set -- "$(mkwork__create_dir "$@" && printf '.')"
+  case "$1" in *.) set -- "${1%.}" ;; *) return 1 ;; esac
+  [ -n "$1" ] || return 1
+  cd -- "$1" || return 1
+  (mkwork__maybe_check_update >/dev/null 2>&1) || true
 }
