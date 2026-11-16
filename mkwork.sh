@@ -252,15 +252,19 @@ mkwork__maybe_check_update() {
   fi
 
   if [ "$latest_tag" != "$MKWORK_VERSION" ]; then
+    attempt=""
+    [ "$MKWORK_AUTO_UPDATE" = "1" ] && attempt="$now_iso"
+    # State must be written before the update runs so that a nested check stops at the interval gate.
+    mkwork__write_state "$now_iso" "$latest_tag" "$attempt" "ok"
     if [ "$MKWORK_NOTIFY_UPDATE" = "1" ]; then
-      printf 'mkwork: update available (%s -> %s). Run: mkwork update\n' "$MKWORK_VERSION" "$latest_tag" >&2
+      printf 'mkwork: update available (%s -> %s). Run: mkwork --update\n' "$MKWORK_VERSION" "$latest_tag" >&2
     fi
     if [ "$MKWORK_AUTO_UPDATE" = "1" ]; then
-      mkwork update >/dev/null 2>&1
+      mkwork --update >/dev/null 2>&1
     fi
+  else
+    mkwork__write_state "$now_iso" "$latest_tag" "" "ok"
   fi
-
-  mkwork__write_state "$now_iso" "$latest_tag" "" "ok"
 }
 
 # mkwork__rc_block_start: start marker for rc block.

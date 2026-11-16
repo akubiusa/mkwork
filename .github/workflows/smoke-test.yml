@@ -74,6 +74,48 @@ jobs:
           test "$name:$dir:$cfg:$repo" = caller_name:caller_dir:caller_cfg:caller_repo
           test "${key+x}${line+x}${target+x}${repo_override+x}" = ""
 
+      - name: Auto-update dispatch
+        run: |
+          set -eu
+          tmp_dir="$(mktemp -d)"
+          export HOME="$tmp_dir/home"
+          mkdir -p "$HOME/.config/mkwork" "$HOME/.local/share/mkwork" "$tmp_dir/bin" "$tmp_dir/release"
+          printf 'MKWORK_VERSION="vTEST"\n' > "$tmp_dir/release/mkwork.sh"
+          (cd "$tmp_dir/release" && sha256sum mkwork.sh > mkwork.sh.sha256)
+          cat > "$tmp_dir/bin/curl" <<EOF
+          #!/bin/sh
+          for url; do :; done
+          case "\$url" in
+            */releases/latest) printf '{"tag_name":"vTEST"}\n' ;;
+            */releases/download/vTEST/*) cat "$tmp_dir/release/\${url##*/}" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod +x "$tmp_dir/bin/curl"
+          export PATH="$tmp_dir/bin:$PATH"
+          installed="$HOME/.local/share/mkwork/mkwork.sh"
+          state="$HOME/.local/state/mkwork/state.json"
+          today="$(date +%Y%m%d)"
+
+          # auto_update=1: the nested call must be --update, not a work name
+          printf 'auto_update=1\n' > "$HOME/.config/mkwork/config"
+          printf 'placeholder\n' > "$installed"
+          timeout -k 2 20 sh -c '. ./mkwork.sh; mkwork autoupd'
+          test -d "$HOME/work/${today}_autoupd"
+          test ! -d "$HOME/work/${today}_update"
+          cmp "$installed" "$tmp_dir/release/mkwork.sh"
+          grep -q '"last_auto_update_attempt": "[^"]' "$state"
+
+          # auto_update=0: the notification names a command that exists, and nothing is installed
+          rm -f "$state"
+          printf 'auto_update=0\n' > "$HOME/.config/mkwork/config"
+          printf 'placeholder\n' > "$installed"
+          current="$(sh -c '. ./mkwork.sh; printf %s "$MKWORK_VERSION"')"
+          sh -c '. ./mkwork.sh; mkwork__maybe_check_update' 2> "$tmp_dir/notify.err"
+          test "$(cat "$tmp_dir/notify.err")" = "mkwork: update available ($current -> vTEST). Run: mkwork --update"
+          test "$(cat "$installed")" = placeholder
+          grep -q '"last_auto_update_attempt": ""' "$state"
+
       - name: Smoke test (error cases)
         run: |
           set -eu
