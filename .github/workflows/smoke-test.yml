@@ -14,6 +14,26 @@ jobs:
       - name: Shell syntax check
         run: sh -n mkwork.sh
 
+      - name: Validate release artifacts
+        run: |
+          set -eu
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          awk '/^      - name: Prepare release artifacts$/ { step = 1; next } step && /^        run: \|$/ { script = 1; next } script && /^      - name:/ { exit } script { sub(/^          /, ""); print }' .github/workflows/release.yml > "$tmp_dir/prepare.sh"
+          cp mkwork.sh "$tmp_dir/mkwork.sh"
+          cd "$tmp_dir"
+          RELEASE_TAG=v1.2.3 sh prepare.sh
+          grep -q '^MKWORK_VERSION="v1.2.3"' dist/mkwork.sh
+          (cd dist && sha256sum -c mkwork.sh.sha256)
+          rm -r dist
+          for tag in '' v1.2 v1.2.3/4 'v1.2.3&x' "v1.2.3\$(touch injected)" "$(printf 'v1.2.3\nx')"; do
+            if RELEASE_TAG="$tag" sh prepare.sh; then
+              exit 1
+            fi
+            test ! -e dist
+            test ! -e injected
+          done
+
       - name: Smoke test
         run: |
           set -eu
