@@ -17,17 +17,24 @@ jobs:
       - name: Validate release artifacts
         run: |
           set -eu
+          script="$(pwd)/scripts/prepare-release.sh"
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
-          awk '/^      - name: Prepare release artifacts$/ { step = 1; next } step && /^        run: \|$/ { script = 1; next } script && /^      - name:/ { exit } script { sub(/^          /, ""); print }' .github/workflows/release.yml > "$tmp_dir/prepare.sh"
           cp mkwork.sh "$tmp_dir/mkwork.sh"
           cd "$tmp_dir"
-          RELEASE_TAG=v1.2.3 sh prepare.sh
-          grep -q '^MKWORK_VERSION="v1.2.3"' dist/mkwork.sh
-          (cd dist && sha256sum -c mkwork.sh.sha256)
-          rm -r dist
-          for tag in '' v1.2 v1.2.3/4 'v1.2.3&x' "v1.2.3\$(touch injected)" "$(printf 'v1.2.3\nx')"; do
-            if RELEASE_TAG="$tag" sh prepare.sh; then
+          export HOME="$tmp_dir/home"
+          mkdir -p "$HOME"
+          for tag in v1.2.3 v1.2.3-rc.1+build.5 2026.11_a; do
+            rm -rf dist
+            sh "$script" "$tag"
+            grep -qxF "MKWORK_VERSION=\"$tag\"  # replaced by release workflow" dist/mkwork.sh
+            (cd dist && sha256sum -c mkwork.sh.sha256)
+            test "$(sh -c '. ./dist/mkwork.sh; mkwork --version')" = "mkwork $tag"
+          done
+          rm -rf dist
+          for tag in '' 'v1/2' 'v1&x' 'v1"x' 'v1\x' 'v1 x' 'v1$(touch injected)' 'v1`touch injected`' "$(printf 'v1\nx')"; do
+            if sh "$script" "$tag"; then
+              echo "accepted unsafe tag: $tag" >&2
               exit 1
             fi
             test ! -e dist
